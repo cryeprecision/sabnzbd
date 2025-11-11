@@ -41,6 +41,7 @@ from sabnzbd.constants import (
     VALID_NZB_FILES,
     Status,
     VALID_ARCHIVES,
+    VALID_NZ2_FILES,
     DuplicateStatus,
 )
 import sabnzbd.misc as misc
@@ -219,7 +220,7 @@ class URLGrabber(Thread):
                     # Check if the original URL has extension
                     if (
                         url != fetch_request.geturl()
-                        and sabnzbd.filesystem.get_ext(filename) not in VALID_NZB_FILES + VALID_ARCHIVES
+                        and sabnzbd.filesystem.get_ext(filename) not in VALID_NZB_FILES + VALID_ARCHIVES + VALID_NZ2_FILES
                     ):
                         filename = os.path.basename(urllib.parse.unquote(fetch_request.geturl()))
                 elif "&nzbname=" in filename:
@@ -260,7 +261,7 @@ class URLGrabber(Thread):
                     temp_nzb.write(data)
 
                 # Check if nzb file
-                if sabnzbd.filesystem.get_ext(filename) in VALID_ARCHIVES + VALID_NZB_FILES:
+                if sabnzbd.filesystem.get_ext(filename) in VALID_ARCHIVES + VALID_NZB_FILES + VALID_NZ2_FILES:
                     # If the user resumed a duplicate detected URL, skip the check
                     dup_check = future_nzo.duplicate != DuplicateStatus.DUPLICATE_IGNORED
 

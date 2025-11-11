@@ -26,13 +26,13 @@ import threading
 from typing import Generator, Set, Optional, Tuple
 
 import sabnzbd
-from sabnzbd.constants import SCAN_FILE_NAME, VALID_ARCHIVES, VALID_NZB_FILES, AddNzbFileResult
+from sabnzbd.constants import SCAN_FILE_NAME, VALID_ARCHIVES, VALID_NZB_FILES, VALID_NZ2_FILES, AddNzbFileResult
 import sabnzbd.filesystem as filesystem
 import sabnzbd.config as config
 import sabnzbd.cfg as cfg
 
 DIR_SCANNER_LOCK = threading.RLock()
-VALID_EXTENSIONS = set(VALID_NZB_FILES + VALID_ARCHIVES)
+VALID_EXTENSIONS = set(VALID_NZB_FILES + VALID_ARCHIVES + VALID_NZ2_FILES)
 
 
 def compare_stat_tuple(tup1, tup2):

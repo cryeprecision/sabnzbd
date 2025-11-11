@@ -45,6 +45,7 @@ from sabnzbd.constants import (
     STOP_PRIORITY,
     RENAMES_FILE,
     MAX_BAD_ARTICLES,
+    VALID_NZ2_FILES,
     Status,
     DuplicateStatus,
 )
@@ -98,6 +99,7 @@ import sabnzbd.nzbparser
 from sabnzbd.downloader import Server
 from sabnzbd.database import HistoryDB
 from sabnzbd.deobfuscate_filenames import is_probably_obfuscated
+import sabnzbd.nz2stuff as nz2
 
 # Name patterns
 # In the subject, we expect the filename within double quotes
@@ -167,6 +169,7 @@ class TryList:
 ##############################################################################
 ArticleSaver = (
     "article",
+    "index",
     "art_id",
     "bytes",
     "lowest_partnum",
@@ -186,9 +189,10 @@ class Article(TryList):
     # Pre-define attributes to save memory
     __slots__ = ArticleSaver + ("fetcher", "fetcher_priority", "tries")
 
-    def __init__(self, article, article_bytes, nzf):
+    def __init__(self, article, article_bytes, article_index, nzf):
         super().__init__()
         self.article: str = article
+        self.index: int = article_index
         self.art_id: Optional[str] = None
         self.bytes: int = article_bytes
         self.lowest_partnum: bool = False
@@ -305,6 +309,7 @@ NzbFileSaver = (
     "filename",
     "filename_checked",
     "filepath",
+    "nz2_file_info",
     "type",
     "is_par2",
     "vol",
@@ -330,7 +335,7 @@ class NzbFile(TryList):
     # Pre-define attributes to save memory
     __slots__ = NzbFileSaver
 
-    def __init__(self, date, subject, raw_article_db, file_bytes, nzo):
+    def __init__(self, date, subject, raw_article_db, file_bytes, nzo, nz2_file_info: nz2.Nz2FileInfo | None = None):
         """Setup object"""
         super().__init__()
 
@@ -339,6 +344,7 @@ class NzbFile(TryList):
         self.filename: str = sanitize_filename(name_extractor(subject))
         self.filename_checked = False
         self.filepath: Optional[str] = None
+        self.nz2_file_info: Optional[nz2.Nz2FileInfo] = nz2_file_info
 
         # Identifiers for par2 files
         self.is_par2: bool = False
@@ -401,7 +407,8 @@ class NzbFile(TryList):
 
     def add_article(self, article_info):
         """Add article to object database and return article object"""
-        article = Article(article_info[0], article_info[1], self)
+        message_id, len_bytes, index = article_info
+        article = Article(message_id, len_bytes, index, self)
         self.articles.append(article)
         self.decodetable.append(article)
         return article
@@ -796,7 +803,10 @@ class NzbObject(TryList):
         if nzb_fp:
             full_nzb_path = save_compressed(admin_dir, filename, nzb_fp)
             try:
-                sabnzbd.nzbparser.nzbfile_parser(full_nzb_path, self)
+                if get_ext(filename) in VALID_NZ2_FILES:
+                    sabnzbd.nzbparser.nz2file_parser(full_nzb_path, self)
+                else:
+                    sabnzbd.nzbparser.nzbfile_parser(full_nzb_path, self)
             except Exception as err:
                 self.incomplete = True
                 logging.warning(T("Invalid NZB file %s, skipping (error: %s)"), filename, err)

@@ -28,6 +28,8 @@ import xml.etree.ElementTree
 import datetime
 import zipfile
 import tempfile
+import base64
+import orjson
 
 import cherrypy._cpreqbody
 from typing import Optional, Dict, Any, Union, List, Tuple
@@ -42,8 +44,9 @@ from sabnzbd.filesystem import (
     remove_file,
 )
 from sabnzbd.misc import name_to_cat, cat_pp_script_sanitizer
-from sabnzbd.constants import DEFAULT_PRIORITY, VALID_ARCHIVES, AddNzbFileResult
+from sabnzbd.constants import DEFAULT_PRIORITY, VALID_ARCHIVES, VALID_NZ2_FILES, AddNzbFileResult
 from sabnzbd.misc import SABRarFile
+import sabnzbd.nz2stuff as nz2
 import rarfile
 
 
@@ -363,6 +366,91 @@ def process_single_nzb(
 
     return result, nzo_ids
 
+def nz2file_parser(full_nz2_path: str, nzo):
+    # For type-hinting
+    from sabnzbd.nzbstuff import NzbObject, NzbFile, SkippedNzbFile
+    assert isinstance(nzo, NzbObject)
+
+    # Hash for dupe-checking
+    md5sum = hashlib.md5()
+
+    # Average date
+    avg_age_sum = 0
+
+    # In case of failing timestamps and failing files
+    time_now = time.time()
+    skipped_files = 0
+    valid_files = 0
+
+    with gzip.open(full_nz2_path) as nz2_fh:
+        parsed = orjson.loads(nz2_fh.read())
+
+    for file in parsed["files"]:
+        path: str = file["path"]
+        file_key: bytes = base64.b64decode(file["key"])
+        last_modified: int = file["last_modified"]
+        file_size: int = file["file_size"]
+        segment_size: int = file["segment_size"]
+
+        subkeys = nz2.derive_subkeys(file_key)
+
+        try:
+            file_date = datetime.datetime.fromtimestamp(int(file["last_modified"]))
+            file_timestamp = file["last_modified"]
+        except Exception:
+            file_date = datetime.datetime.fromtimestamp(time_now)
+            file_timestamp = time_now
+
+        raw_article_db: list[tuple[str, int, int]] = []
+        file_bytes = 0
+        num_segments = (file_size + segment_size - 1) // segment_size
+
+        for segment_index in range(num_segments):
+            ids = nz2.derive_article_ids(subkeys.id, segment_index)
+            size = min(segment_size, file_size - segment_index * segment_size)
+
+            # Update hash
+            md5sum.update(utob(ids.message_id))
+
+            raw_article_db.append((ids.message_id, size, segment_index))
+            file_bytes += size
+
+        # Skip any empty files
+        if not raw_article_db:
+            logging.info("No valid articles in %s, skipping", path)
+            continue
+
+        nz2_file_info = nz2.Nz2FileInfo(
+            path=path,
+            key=file_key,
+            last_modified=last_modified,
+            file_size=file_size,
+            segment_size=segment_size,
+            total_segments=num_segments,
+        )
+
+        # Create NZF
+        try:
+            nzf = NzbFile(file_date, path, raw_article_db, file_bytes, nzo, nz2_file_info)
+        except SkippedNzbFile:
+            # Did not meet requirements, so continue
+            skipped_files += 1
+            continue
+
+        nzo.add_nzf(nzf)
+        valid_files += 1
+        avg_age_sum += file_timestamp
+
+    # Final bookkeeping
+    nr_files = max(1, valid_files)
+    nzo.avg_stamp = avg_age_sum / nr_files
+    nzo.avg_date = datetime.datetime.fromtimestamp(avg_age_sum / nr_files)
+    nzo.md5sum = md5sum.hexdigest()
+
+    if skipped_files:
+        logging.warning(T("Failed to import %s files from %s"), skipped_files, nzo.filename)
+
+
 
 def nzbfile_parser(full_nzb_path: str, nzo):
     # For type-hinting
@@ -454,7 +542,8 @@ def nzbfile_parser(full_nzb_path: str, nzo):
                                 logging.info("Skipping article %s due to strange size (%s)", article_id, segment_size)
                                 nzo.increase_bad_articles_counter("bad_articles")
                             else:
-                                raw_article_db[partnum] = (article_id, segment_size)
+                                # partnum is 1-based in NZB files, convert to 0-based
+                                raw_article_db[partnum] = (article_id, segment_size, partnum - 1)
                                 file_bytes += segment_size
                         except Exception:
                             # In case of missing attributes

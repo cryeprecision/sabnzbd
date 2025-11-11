@@ -63,7 +63,7 @@ import sabnzbd.cfg
 
 from sabnzbd.filesystem import diskspace
 from sabnzbd.misc import to_units
-from sabnzbd.constants import VALID_ARCHIVES, VALID_NZB_FILES, MEBI, Status
+from sabnzbd.constants import VALID_ARCHIVES, VALID_NZB_FILES, VALID_NZ2_FILES, MEBI, Status
 from sabnzbd.panic import launch_a_browser
 
 from sabnzbd.api import fast_queue
@@ -540,7 +540,7 @@ class SABnzbdDelegate(NSObject):
         for filename in filenames:
             logging.info("[macos] receiving from macOS : %s", filename)
             if os.path.exists(filename):
-                if sabnzbd.filesystem.get_ext(filename) in VALID_ARCHIVES + VALID_NZB_FILES:
+                if sabnzbd.filesystem.get_ext(filename) in VALID_ARCHIVES + VALID_NZB_FILES + VALID_NZ2_FILES:
                     sabnzbd.nzbparser.add_nzbfile(filename, keep=True)
         # logging.info('opening done')
 

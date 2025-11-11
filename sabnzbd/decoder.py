@@ -30,6 +30,7 @@ from sabnzbd.constants import SABCTOOLS_VERSION_REQUIRED
 from sabnzbd.encoding import ubtou
 from sabnzbd.nzbstuff import Article
 from sabnzbd.misc import match_str
+import sabnzbd.nz2stuff as nz2
 
 # Check for correct SABCTools version
 SABCTOOLS_VERSION = None
@@ -80,6 +81,8 @@ def decode(article: Article, data_view: memoryview):
 
         if article.nzf.type == "uu":
             decoded_data = decode_uu(article, bytes(data_view))
+        elif article.nzf.nz2_file_info is not None:
+            decoded_data = decode_nz2(article, data_view)
         else:
             decoded_data = decode_yenc(article, data_view)
 
@@ -168,6 +171,38 @@ def decode(article: Article, data_view: memoryview):
         article.on_disk = True
 
     sabnzbd.NzbQueue.register_article(article, article_success)
+
+
+def decode_nz2(article: Article, data_view: memoryview) -> bytearray:
+    info = article.nzf.nz2_file_info
+    assert info is not None, "NZ2 file info missing"
+
+    article.nzf.type = "nz2"
+
+    subkeys = nz2.derive_subkeys(info.key)
+    assoc_data = nz2.derive_assoc_data(
+        file_size=info.file_size,
+        segment_size=info.segment_size,
+        last_modified=info.last_modified,
+        file_path=info.path,
+    )
+
+    # Strip the line with the reponse code and message ID at the start
+    # and strip the message terminator at the end
+    data = data_view.tobytes()
+    start_index = data.find(b"\r\n")
+    end_index = data.rfind(b"\r\n.\r\n")
+    data = data[start_index+2:end_index]
+
+    ciphertext = sabctools.yenc_decode_raw(memoryview(data))
+    cleartext = nz2.decrypt_segment(
+        encrypt_key=subkeys.encrypt,
+        encrypted_segment=ciphertext,
+        nonce=nz2.derive_nonce(article.index),
+        assoc_data=assoc_data,
+    )
+
+    return cleartext
 
 
 def decode_yenc(article: Article, data_view: memoryview) -> bytearray:

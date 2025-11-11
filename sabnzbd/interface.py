@@ -80,6 +80,7 @@ from sabnzbd.constants import (
     GUESSIT_SORT_TYPES,
     VALID_NZB_FILES,
     VALID_ARCHIVES,
+    VALID_NZ2_FILES,
     DEF_NETWORKING_TEST_TIMEOUT,
 )
 from sabnzbd.lang import list_languages
@@ -752,7 +753,7 @@ class ConfigFolders:
     def index(self, **kwargs):
         conf = build_header(sabnzbd.WEB_DIR_CONFIG)
 
-        conf["file_exts"] = ", ".join(VALID_NZB_FILES + VALID_ARCHIVES)
+        conf["file_exts"] = ", ".join(VALID_NZB_FILES + VALID_ARCHIVES + VALID_NZ2_FILES)
 
         for kw in LIST_DIRPAGE + LIST_BOOL_DIRPAGE:
             conf[kw] = config.get_config("misc", kw)()

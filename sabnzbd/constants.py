@@ -137,6 +137,7 @@ STAGES = {
 
 VALID_ARCHIVES = (".zip", ".rar", ".7z")
 VALID_NZB_FILES = (".nzb", ".gz", ".bz2")
+VALID_NZ2_FILES = (".nz2",)
 
 CHEETAH_DIRECTIVES = {"directiveStartToken": "<!--#", "directiveEndToken": "#-->", "prioritizeSearchListOverSelf": True}
 
